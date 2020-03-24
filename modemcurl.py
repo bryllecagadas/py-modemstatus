@@ -1,3 +1,4 @@
+import json
 import pycurl
 import re
 from io import BytesIO 
@@ -20,8 +21,6 @@ class GlobeAztech(ModemCurl):
 		crl.perform() 
 		crl.close()
 
-		body = bytes.getvalue().decode('utf8')
-
-		print(body)
-		#self.STATUS = re.findall("id=\"adslstatus\">.+</td>", body)
-		#print(self.STATUS)
+		body = bytes.getvalue().decode('utf8').replace("'", '"')
+		replaced = re.sub("(\s*?{\s*?|\s*?,\s*?)(['\"])?([a-zA-Z0-9_]+)(['\"])?:", '\g<1>"\g<3>":', body)
+		self.STATUS = json.loads(replaced)
