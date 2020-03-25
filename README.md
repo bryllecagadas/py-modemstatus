@@ -5,4 +5,4 @@ I have 2 ISPs and instead of opening 2 pages, why not run a script that retrieve
 Includes info from Load Balancer.\
 \
 To run:\
-	./modemstatus.py
+    ./modemstatus.py
