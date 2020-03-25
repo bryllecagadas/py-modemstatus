@@ -4,12 +4,14 @@ import json
 import pycurl
 import re
 import urllib
+import os
 from io import BytesIO 
 from http.cookiejar import Cookie, MozillaCookieJar
 
 class ModemCurl:
 	def __init__(self, URL):
 		self.URL = URL
+		self.basepath = os.path.dirname(os.path.realpath(__file__))
 	def get_status(self):
 		return 0
 	def print_status(self):
@@ -29,10 +31,20 @@ class GlobeAztech(ModemCurl):
 
 		# Wrap values in double quotes in order for json.loads to succeed
 		body = bytes.getvalue().decode('utf8', 'ignore').replace("'", '"')
+
+		# Retrieve problematic  HOME_Adsl_Uptime value and replace with a placeholder
+		match = re.search("HOME_Adsl_Uptime\:\"(.+?)\"", body)
+		matches = match.groups()
+		uptime_value = 0
+		if (len(matches) > 0):
+			body = re.sub("HOME_Adsl_Uptime\:\".+?\"", 'HOME_Adsl_Uptime:"HOME_Adsl_Uptime_value"', body)
+			uptime_value = matches[0]
+
 		# Wrap names in double quotes for json.loads
 		replaced = re.sub("(\s*?{\s*?|\s*?,\s*?)(['\"])?([a-zA-Z0-9_]+)(['\"])?:", '\g<1>"\g<3>":', body)
-
 		self.STATUS = json.loads(replaced)
+		self.STATUS['HOME_Adsl_Uptime'] = uptime_value
+
 		self.print_status()
 	def print_status(self):
 		print("Globe Aztech")
@@ -44,7 +56,7 @@ class GlobeAztech(ModemCurl):
 class TPLinkR470(ModemCurl):
 	def get_status(self):
 		configParser = configparser.RawConfigParser()   
-		configFilePath = 'config'
+		configFilePath = './config'
 		configParser.read(configFilePath)
 
 class PLDTiGateway(ModemCurl):
@@ -58,7 +70,7 @@ class PLDTiGateway(ModemCurl):
 		curl = pycurl.Curl() 
 		configParser = configparser.RawConfigParser()   
 
-		configFilePath = 'config'
+		configFilePath = self.basepath + '/config'
 		configParser.read(configFilePath)
 		username = configParser.get(self.__class__.__name__, 'username')
 		password = configParser.get(self.__class__.__name__, 'password')
@@ -74,12 +86,12 @@ class PLDTiGateway(ModemCurl):
 		# The sessionid is required in order for login to go through
 		curl.setopt(curl.URL, URL)
 		curl.setopt(curl.REFERER, self.URL + 'cgi-bin/webproc')
-		curl.setopt(curl.COOKIEFILE, 'cookie')
+		curl.setopt(curl.COOKIEFILE, self.basepath + '/cookie')
 		curl.setopt(curl.WRITEDATA, f)
 		curl.perform()
 
 		cookiejar = MozillaCookieJar()
-		cookiejar.load('cookie')
+		cookiejar.load(self.basepath + '/cookie')
 
 		sessionid = ''
 		for cookie in cookiejar:
@@ -95,7 +107,7 @@ class PLDTiGateway(ModemCurl):
 		curl.setopt(curl.URL, URL)
 		curl.setopt(curl.REFERER, self.URL + 'cgi-bin/webproc')
 		curl.setopt(curl.POSTFIELDS, post)
-		curl.setopt(curl.COOKIEJAR, 'cookie')
+		curl.setopt(curl.COOKIEJAR, self.basepath + '/cookie')
 		curl.setopt(curl.FOLLOWLOCATION, 1)
 		curl.setopt(curl.WRITEDATA, f)
 		curl.perform()
