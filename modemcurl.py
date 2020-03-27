@@ -5,15 +5,18 @@ import pycurl
 import re
 import urllib
 import os
+import hashlib
 from io import BytesIO 
-from http.cookiejar import Cookie, MozillaCookieJar
+from http.cookiejar import Cookie, MozillaCookieJar, FileCookieJar
 
 class ModemCurl:
 	def __init__(self, URL):
 		self.URL = URL
 		self.basepath = os.path.dirname(os.path.realpath(__file__))
+
 	def get_status(self):
 		return 0
+
 	def print_status(self):
 		return 0
 
@@ -46,7 +49,9 @@ class GlobeAztech(ModemCurl):
 		self.STATUS['HOME_Adsl_Uptime'] = uptime_value
 
 		self.print_status()
+
 	def print_status(self):
+		print("-")
 		print("Globe Aztech")
 		print("Status: " + self.STATUS['HOME_Adsl_Status'])
 		print("Uptime: " + self.STATUS['HOME_Adsl_Uptime'])
@@ -54,10 +59,88 @@ class GlobeAztech(ModemCurl):
 		print("Upload: " + self.STATUS['HOME_Adsl_Upstream'])
 
 class TPLinkR470(ModemCurl):
+	def get_data(self, content):
+		result = TPLinkResult(content)
+		self.STATUS = result.parse()
+
 	def get_status(self):
+		URL = self.URL + 'logon/loginJump.htm'
+		bytes = BytesIO()
 		configParser = configparser.RawConfigParser()   
-		configFilePath = './config'
+		configFilePath = self.basepath + '/config'
 		configParser.read(configFilePath)
+		username = configParser.get(self.__class__.__name__, 'username')
+		password = configParser.get(self.__class__.__name__, 'password')
+
+		f = open('/dev/null', 'wb')
+
+		# encoded=admin%3AC36C24ABFD648B5D9ACCA679BB5FA770&nonce=c0a800fa01dad206&URL=..%2Flogon%2FloginJump.htm
+		curl = pycurl.Curl() 
+		curl.setopt(curl.URL, self.URL)
+		curl.setopt(curl.COOKIEJAR, self.basepath + '/tplinkcookie')
+		curl.setopt(curl.WRITEDATA, f)
+		curl.perform()
+		curl.close()
+
+		cookiejar = MozillaCookieJar()
+		cookiejar.load(filename=self.basepath + '/tplinkcookie', ignore_expires=True)
+
+		nonce = ''
+		for cookie in cookiejar:
+			if (cookie.name == 'COOKIE'):
+				nonce = cookie.value
+
+		
+		# Generate the hash
+		hash = hashlib.md5(password.encode('utf8')).hexdigest()
+		hash = hash.upper() + ":" + nonce
+		hash = hashlib.md5(hash.encode("utf8")).hexdigest().upper()
+
+		# Try to login with the sessionid
+		post = "encoded=" + username + "%3A" + hash +  "&nonce=" + nonce + "&URL=..%2Flogon%2FloginJump.htm"
+
+		curl = pycurl.Curl()
+		curl.setopt(curl.URL, URL)
+		curl.setopt(curl.REFERER, URL)
+		curl.setopt(curl.POSTFIELDS, post)
+		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
+		curl.setopt(curl.FOLLOWLOCATION, 1)
+		curl.setopt(curl.WRITEDATA, bytes)
+		curl.perform()
+
+		# Check if user is already logged-in somewhere
+		match = re.search("doContinue\(\)", bytes.getvalue().decode('utf8', 'ignore'), re.MULTILINE)
+		curl.reset()
+		if (match):
+			curl.setopt(curl.URL, self.URL + "logon/loginConfirm.htm")
+			curl.setopt(curl.REFERER, URL)
+			curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
+			curl.setopt(curl.FOLLOWLOCATION, 1)
+			curl.setopt(curl.WRITEDATA, f)
+			curl.perform()
+
+		# Retrieve the information
+		bytes.seek(0)
+		curl.setopt(curl.URL, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
+		curl.setopt(curl.REFERER, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
+		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
+		curl.setopt(curl.WRITEDATA, bytes)
+		curl.perform()
+		curl.close()
+
+		content = bytes.getvalue().decode('utf8', 'ignore')
+
+		if (content):
+			self.get_data(content)
+			self.print_status()
+
+	def print_status(self):
+		for i in self.STATUS:
+			print("-")
+			print("TPLink: " + i['name'])
+			print("Status: " + i['status'])
+			print("IP: " + i['ip'])
+			print("Gateway: " + i['gateway'])
 
 class PLDTiGateway(ModemCurl):
 	def get_data(self, content):
@@ -67,7 +150,6 @@ class PLDTiGateway(ModemCurl):
 	def get_status(self):
 		URL = self.URL + 'cgi-bin/webproc'
 		bytes = BytesIO()
-		curl = pycurl.Curl() 
 		configParser = configparser.RawConfigParser()   
 
 		configFilePath = self.basepath + '/config'
@@ -84,14 +166,15 @@ class PLDTiGateway(ModemCurl):
 
 		# First step is to retrieve the sessionid
 		# The sessionid is required in order for login to go through
+		curl = pycurl.Curl() 
 		curl.setopt(curl.URL, URL)
-		curl.setopt(curl.REFERER, self.URL + 'cgi-bin/webproc')
-		curl.setopt(curl.COOKIEFILE, self.basepath + '/cookie')
+		curl.setopt(curl.COOKIEJAR, self.basepath + '/pldtcookie')
 		curl.setopt(curl.WRITEDATA, f)
 		curl.perform()
+		curl.close()
 
 		cookiejar = MozillaCookieJar()
-		cookiejar.load(self.basepath + '/cookie')
+		cookiejar.load(self.basepath + '/pldtcookie')
 
 		sessionid = ''
 		for cookie in cookiejar:
@@ -104,10 +187,11 @@ class PLDTiGateway(ModemCurl):
 		post += "&%3Asessionid=" + sessionid
 
 		# Try to login with the sessionid
+		curl = pycurl.Curl()
 		curl.setopt(curl.URL, URL)
 		curl.setopt(curl.REFERER, self.URL + 'cgi-bin/webproc')
 		curl.setopt(curl.POSTFIELDS, post)
-		curl.setopt(curl.COOKIEJAR, self.basepath + '/cookie')
+		curl.setopt(curl.COOKIEFILE, self.basepath + '/pldtcookie')
 		curl.setopt(curl.FOLLOWLOCATION, 1)
 		curl.setopt(curl.WRITEDATA, f)
 		curl.perform()
@@ -119,6 +203,7 @@ class PLDTiGateway(ModemCurl):
 		curl.setopt(curl.REFERER, self.URL + 'cgi-bin/webproc')
 		curl.setopt(curl.WRITEDATA, bytes)
 		curl.perform()
+		curl.close()
 
 		content = bytes.getvalue().decode('utf8', 'ignore')
 
@@ -127,6 +212,7 @@ class PLDTiGateway(ModemCurl):
 			self.print_status()
 
 	def print_status(self):
+		print("-")
 		print("PLDT iGateway")
 		print("Status: " + self.STATUS['status'])
 		print("Uptime: " + self.STATUS['uptime'])
@@ -137,6 +223,7 @@ class PLDTiGateway(ModemCurl):
 class PLDTiGatewayResult:
 	def __init__(self, content):
 		self.content = content
+
 	def parse(self):
 		result = {
 			'name': '',
@@ -159,11 +246,11 @@ class PLDTiGatewayResult:
 			cleansed = re.sub("==\"[a-zA-Z]*\" \? [a-zA-Z_ \.\:]* ,", ",", cleansed)
 			
 			# Try to eval the cleaned value
-			evaled = ast.literal_eval(cleansed)
-			result['name'] = evaled[0]
-			result['status'] = evaled[1]
-			result['ip'] = evaled[8]
-			result['uptime'] = evaled[14]
+			eval = ast.literal_eval(cleansed)
+			result['name'] = eval[0]
+			result['status'] = eval[1]
+			result['ip'] = eval[8]
+			result['uptime'] = eval[14]
 
 		# Retrieve download rate
 		match = re.search("G_dsl_downrate = \"(\d+)\"", self.content)
@@ -176,5 +263,53 @@ class PLDTiGatewayResult:
 		matches = match.groups()
 		if(len(matches) == 1):
 			result['upload'] = matches[0]		
+
+		return result
+
+class TPLinkResult:
+	def __init__(self, content):
+		self.content = content
+
+	def parse(self):
+		result = []
+		statuses = [
+			'Disconnected',
+			'Connecting',
+			'Connected',
+			'Disabled',
+			'Online Detection failed',
+			'Online Detection success',
+			'Online Detection is disabled',
+		]
+
+		# Retrieve block of javascript object that contains the information
+		match = re.search("var wanInfoArr \= new Array\((.+?)\)\;", self.content, re.MULTILINE | re.DOTALL)
+		matches = match.groups()
+
+		raw = ''
+		if(len(matches) == 1):
+			raw = matches[0].replace("\n", '')
+
+		eval = ast.literal_eval('[' + raw + ']')
+		wan = 0
+		length = len(eval)
+		for i in range(0, length, 11):
+			if (i + 5 > length):
+				break
+			if (eval[i] != 0):
+				wan += 1
+				if (eval[i] == 5):
+					status = statuses[2]
+				else:
+					status = statuses[int(eval[i])]
+
+				base = {
+					'name': 'Wan ' + str(wan),
+					'gateway': eval[i + 5],
+					'ip': eval[i + 3],
+					'status': status,
+				}
+
+				result.append(base)
 
 		return result
