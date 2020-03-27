@@ -74,7 +74,7 @@ class TPLinkR470(ModemCurl):
 
 		f = open('/dev/null', 'wb')
 
-		# encoded=admin%3AC36C24ABFD648B5D9ACCA679BB5FA770&nonce=c0a800fa01dad206&URL=..%2Flogon%2FloginJump.htm
+		# We try to retrieve the cookie COOKIE
 		curl = pycurl.Curl() 
 		curl.setopt(curl.URL, self.URL)
 		curl.setopt(curl.COOKIEJAR, self.basepath + '/tplinkcookie')
@@ -96,7 +96,7 @@ class TPLinkR470(ModemCurl):
 		hash = hash.upper() + ":" + nonce
 		hash = hashlib.md5(hash.encode("utf8")).hexdigest().upper()
 
-		# Try to login with the sessionid
+		# Try to login with the username and the hashed string
 		post = "encoded=" + username + "%3A" + hash +  "&nonce=" + nonce + "&URL=..%2Flogon%2FloginJump.htm"
 
 		curl = pycurl.Curl()
