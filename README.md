@@ -14,13 +14,13 @@ I have 2 ISPs, and instead of opening 2 pages and the load balancers status page
 1. Create a `./config` file and supply the `username` and `password` for the load balancer and the modem
 ```
 [TPLinkR470]
-username = username
-password = password
+username = username_here
+password = password_here
 
 
 [PLDTiGateway]
-username = username
-password = password
+username = username_here
+password = password_here
 ```
 2. Create blank `./pldtcookie` and `./tplinkcookie` files to store cookies.
 
