@@ -1,13 +1,14 @@
 import ast
 import configparser
+import hashlib
 import json
+import math
+import os
 import pycurl
 import re
 import urllib
-import os
-import hashlib
-from io import BytesIO 
 from http.cookiejar import Cookie, MozillaCookieJar, FileCookieJar
+from io import BytesIO 
 
 class ModemCurl:
 	def __init__(self, URL):
@@ -63,7 +64,17 @@ class TPLinkR470(ModemCurl):
 		result = TPLinkResult(content)
 		self.STATUS = result.parse()
 
-	def get_status(self):
+	def get_dhcp_data(self, content):
+		result = TPLinkDHCP(content)
+		self.DHCPSTATUS = result.parse()
+
+	def login(self):
+		if (hasattr(self, 'logged_in') == False):
+			self.logged_in = False
+
+		if (self.logged_in == True):
+			return
+
 		URL = self.URL + 'logon/loginJump.htm'
 		bytes = BytesIO()
 		configParser = configparser.RawConfigParser()   
@@ -119,8 +130,36 @@ class TPLinkR470(ModemCurl):
 			curl.setopt(curl.WRITEDATA, f)
 			curl.perform()
 
+		f.close()
+		self.curl = curl
+		self.logged_in = True
+
+	def get_dhcp(self):
+		self.login()
+		bytes = BytesIO()
+		curl = self.curl
+
 		# Retrieve the information
-		bytes.seek(0)
+		curl.reset()
+		curl.setopt(curl.URL, self.URL + "userRpm/DhcpServer_ClientList.htm?slt_interface=0")
+		curl.setopt(curl.REFERER, self.URL + "userRpm/Interface_LanSetting.htm")
+		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
+		curl.setopt(curl.WRITEDATA, bytes)
+		curl.perform()
+		curl.close()
+
+		content = bytes.getvalue().decode('utf8', 'ignore')
+		if (content):
+			self.get_dhcp_data(content)
+			self.print_dhcp()
+
+	def get_status(self):
+		self.login()
+		bytes = BytesIO()
+		curl = self.curl
+
+		# Retrieve the information
+		curl.reset()
 		curl.setopt(curl.URL, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
 		curl.setopt(curl.REFERER, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
 		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
@@ -129,10 +168,18 @@ class TPLinkR470(ModemCurl):
 		curl.close()
 
 		content = bytes.getvalue().decode('utf8', 'ignore')
-
 		if (content):
 			self.get_data(content)
 			self.print_status()
+
+	def print_dhcp(self):
+		for i in range(len(self.DHCPSTATUS)):
+			print("-")
+			print("Client " + str(i + 1))
+			print("Name: " + self.DHCPSTATUS[i]['name'])
+			print("MAC: " + self.DHCPSTATUS[i]['mac'])
+			print("IP: " + self.DHCPSTATUS[i]['ip'])
+			print("Time: " + self.DHCPSTATUS[i]['time'])
 
 	def print_status(self):
 		for i in self.STATUS:
@@ -313,3 +360,44 @@ class TPLinkResult:
 				result.append(base)
 
 		return result
+
+class TPLinkDHCP:
+	def __init__(self, content):
+		self.content = content
+
+	def parse(self):
+		result = []
+
+		# Retrieve block of javascript object that contains the information
+		match = re.search("var dhcpList \= new Array\((.+?)\)\;", self.content, re.MULTILINE | re.DOTALL)
+		matches = match.groups()
+
+		raw = ''
+		if(len(matches) == 1):
+			raw = matches[0].replace("\n", '')
+
+		eval = ast.literal_eval('[' + raw + ']')
+		wan = 0
+		length = len(eval)
+		for i in range(0, length, 4):
+			if (i + 3 > length):
+				break
+
+			base = {
+				'name': eval[i],
+				'mac': eval[i + 1],
+				'ip': eval[i + 2],
+				'time': self.format_time(eval[i + 3]),
+			}
+
+			result.append(base)
+
+		return result
+
+	def format_time(self, seconds):
+		seconds = int(seconds)
+		h = seconds / 3600
+		m = (seconds % 3600) / 60
+		s = seconds % 60
+
+		return str(math.floor(h)) + ":" + str(math.floor(m)) + ":" + str(s)

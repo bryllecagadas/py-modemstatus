@@ -24,8 +24,12 @@ password = password_here
 ```
 2. Create blank `./pldtcookie` and `./tplinkcookie` files to store cookies.
 
-3. Modify `./modemstatus.py` and replace the URLs of the modem, include the trailing slash.
+3. Modify `./modemstatus.py` and replace the URLs of the modems, include the trailing slash.
 
 4. Run the script.
 
-To run: `./modemstatus.py`
+To run: `./modemstatus.py --show=DEVICE`
+
+### Options
+
+DEVICE = Device could either be `all`, `globe`, `pldt`, `dhcp`
