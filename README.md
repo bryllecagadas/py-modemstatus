@@ -22,8 +22,10 @@ password = password
 username = username
 password = password
 ```
-2. Modify `./modemstatus.py` and replace the URLs of the modem, include the trailing slash.
+2. Create blank `./pldtcookie` and `./tplinkcookie` files to store cookies.
 
-3. Done
+3. Modify `./modemstatus.py` and replace the URLs of the modem, include the trailing slash.
+
+4. Run the script.
 
 To run: `./modemstatus.py`
