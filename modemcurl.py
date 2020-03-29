@@ -60,6 +60,10 @@ class GlobeAztech(ModemCurl):
 		print("Upload: " + self.STATUS['HOME_Adsl_Upstream'])
 
 class TPLinkR470(ModemCurl):
+	def __init__(self, URL):
+		self.logged_in = False
+		super(TPLinkR470, self).__init__(URL)
+
 	def get_data(self, content):
 		result = TPLinkResult(content)
 		self.STATUS = result.parse()
@@ -68,10 +72,45 @@ class TPLinkR470(ModemCurl):
 		result = TPLinkDHCP(content)
 		self.DHCPSTATUS = result.parse()
 
-	def login(self):
-		if (hasattr(self, 'logged_in') == False):
-			self.logged_in = False
+	def get_dhcp(self):
+		self.login()
+		bytes = BytesIO()
 
+		# Retrieve the information
+		curl = pycurl.Curl()
+		curl.setopt(curl.URL, self.URL + "userRpm/DhcpServer_ClientList.htm?slt_interface=0")
+		curl.setopt(curl.REFERER, self.URL + "userRpm/Interface_LanSetting.htm")
+		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
+		curl.setopt(curl.WRITEDATA, bytes)
+		curl.perform()
+		curl.close()
+
+		content = bytes.getvalue().decode('utf8', 'ignore')
+		print('here')
+		if (content):
+			self.get_dhcp_data(content)
+			self.print_dhcp()
+
+	def get_status(self):
+		self.login()
+		bytes = BytesIO()
+
+		# Retrieve the information
+		curl = pycurl.Curl()
+		curl.setopt(curl.URL, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
+		curl.setopt(curl.REFERER, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
+		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
+		curl.setopt(curl.WRITEDATA, bytes)
+		curl.perform()
+		curl.close()
+
+		content = bytes.getvalue().decode('utf8', 'ignore')
+		if (content):
+			self.get_data(content)
+			self.print_status()
+
+
+	def login(self):
 		if (self.logged_in == True):
 			return
 
@@ -131,46 +170,8 @@ class TPLinkR470(ModemCurl):
 			curl.perform()
 
 		f.close()
-		self.curl = curl
+		curl.close()
 		self.logged_in = True
-
-	def get_dhcp(self):
-		self.login()
-		bytes = BytesIO()
-		curl = self.curl
-
-		# Retrieve the information
-		curl.reset()
-		curl.setopt(curl.URL, self.URL + "userRpm/DhcpServer_ClientList.htm?slt_interface=0")
-		curl.setopt(curl.REFERER, self.URL + "userRpm/Interface_LanSetting.htm")
-		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
-		curl.setopt(curl.WRITEDATA, bytes)
-		curl.perform()
-		curl.close()
-
-		content = bytes.getvalue().decode('utf8', 'ignore')
-		if (content):
-			self.get_dhcp_data(content)
-			self.print_dhcp()
-
-	def get_status(self):
-		self.login()
-		bytes = BytesIO()
-		curl = self.curl
-
-		# Retrieve the information
-		curl.reset()
-		curl.setopt(curl.URL, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
-		curl.setopt(curl.REFERER, self.URL + "userRpm/Monitor_sysinfo_wanstatus.htm")
-		curl.setopt(curl.COOKIEFILE, self.basepath + '/tplinkcookie')
-		curl.setopt(curl.WRITEDATA, bytes)
-		curl.perform()
-		curl.close()
-
-		content = bytes.getvalue().decode('utf8', 'ignore')
-		if (content):
-			self.get_data(content)
-			self.print_status()
 
 	def print_dhcp(self):
 		for i in range(len(self.DHCPSTATUS)):
@@ -400,4 +401,13 @@ class TPLinkDHCP:
 		m = (seconds % 3600) / 60
 		s = seconds % 60
 
-		return str(math.floor(h)) + ":" + str(math.floor(m)) + ":" + str(s)
+		h = str(math.floor(h))
+
+		if (m < 10):
+			m = '0' + str(math.floor(m))
+		else:
+			m = str(math.floor(m))
+
+		s = str(s)
+
+		return h + ":" + m + ":" + s

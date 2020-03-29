@@ -14,6 +14,7 @@ def start_globe():
 def start_tplink():
 	tplink = TPLinkR470("http://192.168.0.1/")
 	tplink.get_status()
+	tplink.get_dhcp()
 
 def start_dhcp():
 	tplink = TPLinkR470("http://192.168.0.1/")
